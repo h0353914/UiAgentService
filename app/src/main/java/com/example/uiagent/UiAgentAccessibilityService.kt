@@ -10,6 +10,7 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.provider.Settings
 import android.text.TextUtils
+import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import java.util.concurrent.CountDownLatch
@@ -85,6 +86,18 @@ class UiAgentAccessibilityService : AccessibilityService() {
     fun clickByViewId(fullRid: String): Boolean {
         val roots = getWindowRoots()
         val node = findFirstByViewIdInRoots(roots, fullRid) ?: return false
+        return performClickUpTree(node)
+    }
+
+    fun clickByViewIdAndText(fullRid: String, text: String): Boolean {
+        Log.d("UiAgent", "clickByViewIdAndText: rid=$fullRid, text=$text")
+        val roots = getWindowRoots()
+        val node = findFirstByViewIdAndTextInRoots(roots, fullRid, text)
+        if (node == null) {
+            Log.d("UiAgent", "clickByViewIdAndText: node NOT found")
+            return false
+        }
+        Log.d("UiAgent", "clickByViewIdAndText: node found, clicking...")
         return performClickUpTree(node)
     }
 
@@ -323,6 +336,18 @@ class UiAgentAccessibilityService : AccessibilityService() {
         return null
     }
 
+    private fun findFirstByViewIdAndTextInRoots(
+        roots: List<AccessibilityNodeInfo>,
+        fullRid: String,
+        text: String,
+    ): AccessibilityNodeInfo? {
+        for (r in roots) {
+            val hit = findFirstByViewIdAndText(r, fullRid, text)
+            if (hit != null) return hit
+        }
+        return null
+    }
+
     private fun collectClickableChildren(parent: AccessibilityNodeInfo, out: MutableList<ClickableItem>) {
         // Walk subtree and collect nodes that are clickable and have non-empty bounds.
         // Keep a stable order (preorder) so pick="index" is deterministic.
@@ -433,6 +458,28 @@ class UiAgentAccessibilityService : AccessibilityService() {
         return null
     }
 
+    private fun findFirstByViewIdAndText(
+        root: AccessibilityNodeInfo,
+        fullRid: String,
+        text: String,
+    ): AccessibilityNodeInfo? {
+        val nodeRid = root.viewIdResourceName
+        if (fullRid == nodeRid) {
+            val txt = root.text?.toString()?.trim() ?: ""
+            val hnt = root.hintText?.toString()?.trim() ?: ""
+            val target = text.trim()
+            if (txt == target || hnt == target) {
+                return root
+            }
+        }
+        for (i in 0 until root.childCount) {
+            val c = root.getChild(i) ?: continue
+            val hit = findFirstByViewIdAndText(c, fullRid, text)
+            if (hit != null) return hit
+        }
+        return null
+    }
+
     private fun findFirstByText(
         root: AccessibilityNodeInfo,
         q: String,
@@ -496,5 +543,43 @@ class UiAgentAccessibilityService : AccessibilityService() {
             val c = root.getChild(i) ?: continue
             collectDescs(c, out)
         }
+    }
+
+    /**
+     * 列出目前畫面所有 [rid, text] 組合清單。
+     */
+    fun listAllElements(): List<Map<String, String>> {
+        val out = ArrayList<Map<String, String>>()
+        val roots = getWindowRoots()
+        val seen = HashSet<String>() // 用於簡單去重 (rid+text+desc)
+
+        fun walk(n: AccessibilityNodeInfo) {
+            val rid = n.viewIdResourceName ?: ""
+            val txt = (n.text?.toString()?.trim() ?: "")
+                .ifEmpty { n.hintText?.toString()?.trim() ?: "" }
+            val desc = n.contentDescription?.toString()?.trim() ?: ""
+            
+            if (rid.isNotEmpty() || txt.isNotEmpty() || desc.isNotEmpty()) {
+                val key = "$rid|$txt|$desc"
+                if (!seen.contains(key)) {
+                    val map = HashMap<String, String>()
+                    if (rid.isNotEmpty()) map["rid"] = rid
+                    if (txt.isNotEmpty()) map["text"] = txt
+                    if (desc.isNotEmpty()) map["desc"] = desc
+                    out.add(map)
+                    seen.add(key)
+                }
+            }
+
+            for (i in 0 until n.childCount) {
+                val c = n.getChild(i) ?: continue
+                walk(c)
+            }
+        }
+
+        for (r in roots) {
+            walk(r)
+        }
+        return out
     }
 }

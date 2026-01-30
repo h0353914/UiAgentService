@@ -57,6 +57,7 @@ class UiAgentCmdReceiver : BroadcastReceiver() {
             cmd == "click_desc" ||
             cmd == "click_text" ||
             cmd == "click_text_contains" ||
+            cmd == "click_rid_text" ||
             cmd == "wait_exists_rid" ||
             cmd == "click_child_under_rid"
 
@@ -102,6 +103,10 @@ class UiAgentCmdReceiver : BroadcastReceiver() {
                 "click_rid" -> {
                     val clicked = acc.clickByViewId(rid)
                     "{\"ok\":true,\"cmd\":\"click_rid\",\"rid\":${jsonQuote(rid)},\"clicked\":$clicked,\"elapsed_ms\":${elapsedMs(t0)}}"
+                }
+                "click_rid_text" -> {
+                    val clicked = acc.clickByViewIdAndText(rid, text)
+                    "{\"ok\":true,\"cmd\":\"click_rid_text\",\"rid\":${jsonQuote(rid)},\"text\":${jsonQuote(text)},\"clicked\":$clicked,\"elapsed_ms\":${elapsedMs(t0)}}"
                 }
                 "exists_desc" -> {
                     val ex = acc.existsByDesc(desc)
@@ -178,6 +183,36 @@ class UiAgentCmdReceiver : BroadcastReceiver() {
                 "list_descs" -> {
                     val ds = acc.listAllDescs()
                     "{\"ok\":true,\"cmd\":\"list_descs\",\"count\":${ds.size},\"descs\":${jsonArray(ds)},\"elapsed_ms\":${elapsedMs(t0)}}"
+                }
+                "list_all_elements" -> {
+                    val items = acc.listAllElements()
+                    val sb = StringBuilder()
+                    sb.append("{\"ok\":true,\"cmd\":\"list_all_elements\",\"count\":${items.size},\"elements\":[")
+                    for (i in items.indices) {
+                        if (i != 0) sb.append(',')
+                        val m = items[i]
+                        sb.append("{")
+                        var first = true
+                        val rid = m["rid"]
+                        if (rid != null) {
+                            sb.append("\"rid\":").append(jsonQuote(rid))
+                            first = false
+                        }
+                        val text = m["text"]
+                        if (text != null) {
+                            if (!first) sb.append(',')
+                            sb.append("\"text\":").append(jsonQuote(text))
+                            first = false
+                        }
+                        val desc = m["desc"]
+                        if (desc != null) {
+                            if (!first) sb.append(',')
+                            sb.append("\"desc\":").append(jsonQuote(desc))
+                        }
+                        sb.append("}")
+                    }
+                    sb.append("],\"elapsed_ms\":${elapsedMs(t0)}}")
+                    sb.toString()
                 }
                 else -> {
                     "{\"ok\":false,\"error\":\"unknown_cmd\",\"cmd\":${jsonQuote(cmd)}}"
