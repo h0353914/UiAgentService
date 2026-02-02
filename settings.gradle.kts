@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "UiAgentService"
 include(":app")
+include(":uiautomation")
