@@ -58,6 +58,7 @@ class UiAgentCmdReceiver : BroadcastReceiver() {
             cmd == "click_text" ||
             cmd == "click_text_contains" ||
             cmd == "click_rid_text" ||
+            cmd == "click_rid_content_desc" ||
             cmd == "wait_exists_rid" ||
             cmd == "click_child_under_rid"
 
@@ -107,6 +108,23 @@ class UiAgentCmdReceiver : BroadcastReceiver() {
                 "click_rid_text" -> {
                     val clicked = acc.clickByViewIdAndText(rid, text)
                     "{\"ok\":true,\"cmd\":\"click_rid_text\",\"rid\":${jsonQuote(rid)},\"text\":${jsonQuote(text)},\"clicked\":$clicked,\"elapsed_ms\":${elapsedMs(t0)}}"
+                }
+                "exists_rid_content_desc" -> {
+                    val ex = acc.existsByViewIdAndDesc(rid, desc)
+                    "{\"ok\":true,\"cmd\":\"exists_rid_content_desc\",\"rid\":${jsonQuote(rid)},\"desc\":${jsonQuote(desc)},\"exists\":$ex,\"elapsed_ms\":${elapsedMs(t0)}}"
+                }
+                "click_rid_content_desc" -> {
+                    val clicked = acc.clickByViewIdAndDesc(rid, desc)
+                    "{\"ok\":true,\"cmd\":\"click_rid_content_desc\",\"rid\":${jsonQuote(rid)},\"desc\":${jsonQuote(desc)},\"clicked\":$clicked,\"elapsed_ms\":${elapsedMs(t0)}}"
+                }
+                "wait_exists_rid_content_desc" -> {
+                    val end = System.currentTimeMillis() + timeoutMs
+                    var ex = acc.existsByViewIdAndDesc(rid, desc)
+                    while (!ex && System.currentTimeMillis() < end) {
+                        Thread.sleep(50)
+                        ex = acc.existsByViewIdAndDesc(rid, desc)
+                    }
+                    "{\"ok\":true,\"cmd\":\"wait_exists_rid_content_desc\",\"rid\":${jsonQuote(rid)},\"desc\":${jsonQuote(desc)},\"exists\":$ex,\"timeout_ms\":$timeoutMs,\"elapsed_ms\":${elapsedMs(t0)}}"
                 }
                 "exists_desc" -> {
                     val ex = acc.existsByDesc(desc)

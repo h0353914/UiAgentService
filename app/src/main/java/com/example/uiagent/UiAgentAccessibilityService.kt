@@ -101,6 +101,28 @@ class UiAgentAccessibilityService : AccessibilityService() {
         return performClickUpTree(node)
     }
 
+    fun existsByViewIdAndDesc(fullRid: String, desc: String): Boolean {
+        val roots = getWindowRoots()
+        for (r in roots) {
+            if (findFirstByViewIdAndDesc(r, fullRid, desc) != null) return true
+        }
+        return false
+    }
+
+    fun clickByViewIdAndDesc(fullRid: String, desc: String): Boolean {
+        Log.d("UiAgent", "clickByViewIdAndDesc: rid=$fullRid, desc=$desc")
+        val roots = getWindowRoots()
+        for (r in roots) {
+            val node = findFirstByViewIdAndDesc(r, fullRid, desc)
+            if (node != null) {
+                Log.d("UiAgent", "clickByViewIdAndDesc: node found, clicking...")
+                return performClickUpTree(node)
+            }
+        }
+        Log.d("UiAgent", "clickByViewIdAndDesc: node NOT found")
+        return false
+    }
+
     fun existsByDesc(desc: String): Boolean {
         val roots = getWindowRoots()
         for (r in roots) {
@@ -475,6 +497,26 @@ class UiAgentAccessibilityService : AccessibilityService() {
         for (i in 0 until root.childCount) {
             val c = root.getChild(i) ?: continue
             val hit = findFirstByViewIdAndText(c, fullRid, text)
+            if (hit != null) return hit
+        }
+        return null
+    }
+
+    private fun findFirstByViewIdAndDesc(
+        root: AccessibilityNodeInfo,
+        fullRid: String,
+        desc: String,
+    ): AccessibilityNodeInfo? {
+        val nodeRid = root.viewIdResourceName
+        if (fullRid == nodeRid) {
+            val cd = root.contentDescription?.toString()
+            if (cd == desc) {
+                return root
+            }
+        }
+        for (i in 0 until root.childCount) {
+            val c = root.getChild(i) ?: continue
+            val hit = findFirstByViewIdAndDesc(c, fullRid, desc)
             if (hit != null) return hit
         }
         return null
