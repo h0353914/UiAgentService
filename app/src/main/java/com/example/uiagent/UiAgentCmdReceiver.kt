@@ -48,6 +48,11 @@ class UiAgentCmdReceiver : BroadcastReceiver() {
         val pick = intent.getStringExtra("pick") ?: "left"
         val index = intent.getIntExtra("index", 0)
         val timeoutMs = (intent.getIntExtra("timeout_ms", 1200)).coerceIn(50, 10000)
+        val x1 = intent.getIntExtra("x1", 0)
+        val y1 = intent.getIntExtra("y1", 0)
+        val x2 = intent.getIntExtra("x2", 0)
+        val y2 = intent.getIntExtra("y2", 0)
+        val durationMs = (intent.getIntExtra("duration_ms", 300)).coerceIn(50, 2000).toLong()
 
         // Some operations (click via dispatchGesture, waiting loops) must not block the main
         // looper thread, otherwise gesture dispatch/callbacks can stall and always time out.
@@ -60,13 +65,14 @@ class UiAgentCmdReceiver : BroadcastReceiver() {
             cmd == "click_rid_text" ||
             cmd == "click_rid_content_desc" ||
             cmd == "wait_exists_rid" ||
-            cmd == "click_child_under_rid"
+            cmd == "click_child_under_rid" ||
+            cmd == "swipe"
 
         if (isAsyncCmd) {
             val pending = goAsync()
             Thread {
                 val t0 = System.nanoTime()
-                val resp = runCommand(cmd, rid, desc, text, pick, index, timeoutMs, t0)
+                val resp = runCommand(cmd, rid, desc, text, pick, index, timeoutMs, t0, x1, y1, x2, y2, durationMs)
                 pending.resultData = resp
                 pending.finish()
             }.start()
@@ -74,7 +80,7 @@ class UiAgentCmdReceiver : BroadcastReceiver() {
         }
 
         val t0 = System.nanoTime()
-        setResultData(runCommand(cmd, rid, desc, text, pick, index, timeoutMs, t0))
+        setResultData(runCommand(cmd, rid, desc, text, pick, index, timeoutMs, t0, x1, y1, x2, y2, durationMs))
     }
 
     private fun runCommand(
@@ -86,6 +92,11 @@ class UiAgentCmdReceiver : BroadcastReceiver() {
         index: Int,
         timeoutMs: Int,
         t0: Long,
+        x1: Int = 0,
+        y1: Int = 0,
+        x2: Int = 0,
+        y2: Int = 0,
+        durationMs: Long = 300,
     ): String {
         val acc = UiAgentAccessibilityService.instance
         if (acc == null) {
@@ -226,11 +237,32 @@ class UiAgentCmdReceiver : BroadcastReceiver() {
                         if (desc != null) {
                             if (!first) sb.append(',')
                             sb.append("\"desc\":").append(jsonQuote(desc))
+                            first = false
                         }
+                        val bounds = m["bounds"]
+                        if (bounds != null) {
+                            if (!first) sb.append(',')
+                            sb.append("\"bounds\":").append(jsonQuote(bounds))
+                            first = false
+                        }
+
+                        val rCur = m["range_cur"]
+                        if (rCur != null) {
+                            if (!first) sb.append(',')
+                            sb.append("\"range_cur\":").append(rCur) // numeric
+                            sb.append(",\"range_min\":").append(m["range_min"])
+                            sb.append(",\"range_max\":").append(m["range_max"])
+                            sb.append(",\"range_type\":").append(m["range_type"])
+                        }
+
                         sb.append("}")
                     }
                     sb.append("],\"elapsed_ms\":${elapsedMs(t0)}}")
                     sb.toString()
+                }
+                "swipe" -> {
+                    val swiped = acc.swipe(x1, y1, x2, y2, durationMs)
+                    "{\"ok\":true,\"cmd\":\"swipe\",\"x1\":$x1,\"y1\":$y1,\"x2\":$x2,\"y2\":$y2,\"duration_ms\":$durationMs,\"swiped\":$swiped,\"elapsed_ms\":${elapsedMs(t0)}}"
                 }
                 else -> {
                     "{\"ok\":false,\"error\":\"unknown_cmd\",\"cmd\":${jsonQuote(cmd)}}"

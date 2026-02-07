@@ -175,6 +175,20 @@ class UiAgentAccessibilityService : AccessibilityService() {
     }
 
     /**
+     * 執行滑動手勢（從 x1,y1 滑到 x2,y2）。
+     *
+     * @param x1 起點 x 座標
+     * @param y1 起點 y 座標
+     * @param x2 終點 x 座標
+     * @param y2 終點 y 座標
+     * @param durationMs 滑動持續時間（毫秒），預設 300ms
+     * @return 是否成功執行滑動
+     */
+    fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long = 300): Boolean {
+        return dispatchSwipe(x1.toFloat(), y1.toFloat(), x2.toFloat(), y2.toFloat(), durationMs)
+    }
+
+    /**
      * 列出目前 service 能看到的所有 window（供除錯用）。
      *
      * 內容為「可讀字串」清單，方便用 adb 直接看：
@@ -459,6 +473,55 @@ class UiAgentAccessibilityService : AccessibilityService() {
         return ok
     }
 
+    private fun dispatchSwipe(x1: Float, y1: Float, x2: Float, y2: Float, durationMs: Long): Boolean {
+        val path = Path().apply {
+            moveTo(x1, y1)
+            lineTo(x2, y2)
+        }
+        val stroke = GestureDescription.StrokeDescription(path, 0, durationMs)
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+
+        val doneLatch = CountDownLatch(1)
+        val acceptLatch = CountDownLatch(1)
+        var ok = false
+        var accepted = false
+
+        // dispatchGesture is safest when invoked on the main looper.
+        val mh = mainHandler ?: return false
+
+        mh.post {
+            accepted = dispatchGesture(
+                gesture,
+                object : AccessibilityService.GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription) {
+                        ok = true
+                        doneLatch.countDown()
+                    }
+
+                    override fun onCancelled(gestureDescription: GestureDescription) {
+                        ok = false
+                        doneLatch.countDown()
+                    }
+                },
+                gestureHandler
+            )
+            acceptLatch.countDown()
+            if (!accepted) {
+                // Ensure waiters are released even if gesture was rejected immediately.
+                doneLatch.countDown()
+            }
+        }
+
+        // Wait briefly for the dispatchGesture() call to run.
+        acceptLatch.await(250, TimeUnit.MILLISECONDS)
+        if (!accepted) return false
+
+        // Wait for completion/cancel with extra time for longer swipes.
+        val waitMs = (durationMs + 500).coerceAtMost(2000)
+        doneLatch.await(waitMs, TimeUnit.MILLISECONDS)
+        return ok
+    }
+
     private fun findFirstByViewId(root: AccessibilityNodeInfo, fullRid: String): AccessibilityNodeInfo? {
         if (fullRid == root.viewIdResourceName) return root
         for (i in 0 until root.childCount) {
@@ -601,13 +664,32 @@ class UiAgentAccessibilityService : AccessibilityService() {
                 .ifEmpty { n.hintText?.toString()?.trim() ?: "" }
             val desc = n.contentDescription?.toString()?.trim() ?: ""
             
-            if (rid.isNotEmpty() || txt.isNotEmpty() || desc.isNotEmpty()) {
-                val key = "$rid|$txt|$desc"
+            
+            val rect = Rect()
+            n.getBoundsInScreen(rect)
+            val bounds = "[${rect.left},${rect.top}][${rect.right},${rect.bottom}]"
+
+            val range = n.rangeInfo
+            val rangeInfoStr = if (range != null) {
+                "${range.current}|${range.min}|${range.max}|${range.type}"
+            } else ""
+
+            if (rid.isNotEmpty() || txt.isNotEmpty() || desc.isNotEmpty() || range != null) {
+                val key = "$rid|$txt|$desc|$bounds|$rangeInfoStr"
                 if (!seen.contains(key)) {
                     val map = HashMap<String, String>()
                     if (rid.isNotEmpty()) map["rid"] = rid
                     if (txt.isNotEmpty()) map["text"] = txt
                     if (desc.isNotEmpty()) map["desc"] = desc
+                    map["bounds"] = bounds
+                    
+                    if (range != null) {
+                        map["range_cur"] = range.current.toString()
+                        map["range_min"] = range.min.toString()
+                        map["range_max"] = range.max.toString()
+                        map["range_type"] = range.type.toString()
+                    }
+
                     out.add(map)
                     seen.add(key)
                 }

@@ -45,6 +45,11 @@ adb forward tcp:27183 localabstract:uiagent27183
 {"cmd":"wait_exists_rid","rid":"com.sonyericsson.android.camera:id/main_button","timeout_ms":1200}
 ```
 
+- swipe (從 x1,y1 滑到 x2,y2)
+```json
+{"cmd":"swipe","x1":500,"y1":1000,"x2":500,"y2":500,"duration_ms":300}
+```
+
 ## Python 測試
 
 ```bash
